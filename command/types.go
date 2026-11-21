@@ -143,6 +143,43 @@ func verifyInstalledBinary(entry *manifest.Plugin, binaryPath string, requireSig
 	return verifyBinaryDigest(entry, binaryPath)
 }
 
+// VerifyPluginBinaryPath applies require-signed-plugins to a plugin binary
+// given by path, as `pvtr benchmark` takes it. With the policy off it does
+// nothing, so a fresh build can still be benchmarked. With it on, the path must
+// resolve to a binary recorded in plugins.json, and that entry must pass the
+// same policy and digest check `pvtr run` applies before exec.
+func VerifyPluginBinaryPath(binaryPath string) error {
+	if !config.RequireSignedPlugins() {
+		return nil
+	}
+	binariesPath := config.GetBinariesPath()
+	m, err := manifest.Load(binariesPath)
+	if err != nil {
+		return fmt.Errorf("loading plugin manifest: %w", err)
+	}
+	want := canonicalPath(binaryPath)
+	for k := range m.Plugins {
+		entry := m.Plugins[k]
+		if canonicalPath(filepath.Join(binariesPath, entry.BinaryPath)) == want {
+			return verifyInstalledBinary(&entry, binaryPath, true)
+		}
+	}
+	return fmt.Errorf("%w: %s is not a plugin installed in %s and require-signed-plugins is enabled; install it by coordinate with `pvtr install` and pass the installed binary", ErrPluginVerification, binaryPath, binariesPath)
+}
+
+// canonicalPath resolves p to an absolute path with symlinks evaluated, so two
+// spellings of the same file compare equal. It falls back to the cleaned
+// absolute path when the file cannot be resolved.
+func canonicalPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if resolved, err := filepath.EvalSymlinks(p); err == nil {
+		return resolved
+	}
+	return filepath.Clean(p)
+}
+
 // reinstallHint names the command that repairs an entry.
 func reinstallHint(entry *manifest.Plugin) string {
 	if entry.Coordinate == "" {

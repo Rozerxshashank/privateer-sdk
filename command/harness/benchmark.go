@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
+	"github.com/privateerproj/privateer-sdk/command"
 	"github.com/privateerproj/privateer-sdk/pluginkit"
 	"github.com/privateerproj/privateer-sdk/shared"
 )
@@ -61,6 +62,11 @@ func benchmarkCmd(writerFn func() Writer) *cobra.Command {
 			}
 			binPath, err := resolvePluginBinary(args[0])
 			if err != nil {
+				return err
+			}
+			// Same gate as `pvtr run`: with require-signed-plugins on, only an
+			// installed, verified binary may be benchmarked.
+			if err := command.VerifyPluginBinaryPath(binPath); err != nil {
 				return err
 			}
 			if writeDir == "" {
